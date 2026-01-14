@@ -71,6 +71,13 @@ PATH_SVG = dedent(
 ).rstrip()
 
 
+FILL_SVG = dedent(
+    """
+   <polygon fill="{color}" points="{points}" />
+"""
+).rstrip()
+
+
 class Path(NamedTuple):
     points: list[Point]
     color: str
@@ -87,6 +94,17 @@ class Path(NamedTuple):
             [f'{round(point.x,1):g},{round(point.y,1):g}' for point in self.points]
         )
         return PATH_SVG.format(color=self.color, width=self.width, path=path)
+
+
+class Fill(NamedTuple):
+    points: list[Point]
+    color: str
+
+    def get_SVG(self):
+        points = ' '.join(
+            [f'{round(point.x,1):g},{round(point.y,1):g}' for point in self.points]
+        )
+        return FILL_SVG.format(color=self.color, points=points)
 
 
 # mapping of method names to global aliases
@@ -116,6 +134,7 @@ TURTLE_COLOR = '#63A375'  # "mint" (non-standard name)
 TURTLE_DELAY = 0.2  # pause after each visual command, in seconds
 PEN_COLOR = '#663399'  # rebeccapurple https://www.w3.org/TR/css-color-4/#valdef-color-rebeccapurple
 PEN_WIDTH = 2
+FILL_COLOR = '#663399'  # default fill color same as pen
 
 
 TURTLE_SVG = dedent(
@@ -146,9 +165,13 @@ class Turtle:
         self.active_pen = True
         self.__pen_color = PEN_COLOR
         self.__pen_width = PEN_WIDTH
+        self.__fill_color = FILL_COLOR
         self.paths: list[Path] = [
             Path(points=[self.position], color=PEN_COLOR, width=PEN_WIDTH)
         ]
+        self.fills: list[Fill] = []
+        self.__filling = False
+        self.__fill_points: list[Point] = []
         # TODO: issue warning if `display` did not return a handle
         self.drawing.handle = display(HTML(self.get_SVG()), display_id=True)
 
@@ -201,6 +224,19 @@ class Turtle:
             self.paths[-1] = new_path
 
     @property
+    def fill_color(self):
+        return self.__fill_color
+
+    @fill_color.setter
+    def fill_color(self, color):
+        self.__fill_color = color
+
+    @property
+    def filling(self):
+        """Return True if currently filling, False otherwise."""
+        return self.__filling
+
+    @property
     def delay(self):
         return self.__delay
 
@@ -217,7 +253,8 @@ class Turtle:
         self.__delay = s
 
     def get_SVG(self):
-        svg = [path.get_SVG() for path in self.paths]
+        svg = [fill.get_SVG() for fill in self.fills]
+        svg.extend(path.get_SVG() for path in self.paths)
         if self.visible:
             svg.append(
                 TURTLE_SVG.format(
@@ -264,6 +301,8 @@ class Turtle:
             self.paths.append(
                 Path(points=[new_pos], color=self.pen_color, width=self.pen_width)
             )
+        if self.__filling:
+            self.__fill_points.append(new_pos)
         self.position = new_pos
         if self.animate:
             self.draw()
@@ -339,6 +378,22 @@ class Turtle:
         """Lower the pen if it's up; raises if it's down."""
         self.active_pen = not self.active_pen
 
+    @command_alias('beginfill')
+    def begin_fill(self):
+        """Start recording vertices for a filled polygon."""
+        self.__filling = True
+        self.__fill_points = [self.position]
+
+    @command_alias('endfill')
+    def end_fill(self):
+        """Complete the filled polygon and render it."""
+        if self.__filling and len(self.__fill_points) > 2:
+            self.fills.append(Fill(points=self.__fill_points, color=self.__fill_color))
+        self.__filling = False
+        self.__fill_points = []
+        if self.animate:
+            self.draw()
+
     def __enter__(self):
         self.saved_animate = self.animate
         self.animate = False
@@ -381,12 +436,14 @@ __all__ = [
     'Turtle',
     'Point',
     'Path',
+    'Fill',
     'magnet',
     'make_turtle',
     'get_turtle',
     'no_pen',
     'set_color',
     'set_width',
+    'set_fill_color',
     'no_update',
     'set_default',
     'set_heading',
@@ -395,6 +452,7 @@ __all__ = [
     'DEFAULT_DRAW_HEIGHT',
     'PEN_COLOR',
     'PEN_WIDTH',
+    'FILL_COLOR',
     'parse_magic_args',
 ]
 
@@ -434,6 +492,12 @@ def set_width(width: int):
     """Set the pen width."""
     turtle = get_turtle()
     turtle.pen_width = width
+
+
+def set_fill_color(color: str):
+    """Set the fill color."""
+    turtle = get_turtle()
+    turtle.fill_color = color
 
 
 def set_heading(angle: float):
